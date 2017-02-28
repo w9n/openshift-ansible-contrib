@@ -52,18 +52,6 @@ if [ "${RHEL_IMAGE_PATH:(-6)}" != '.qcow2' ]; then
     exit 1
 fi
 
-# Check $RH_USERNAME
-if [ -z "$RH_USERNAME" ]; then
-    echoerr '$RH_USERNAME variable is required'
-    exit 1
-fi
-
-# Check $RH_POOL_ID
-if [ -z "$RH_POOL_ID" ]; then
-    echoerr '$RH_POOL_ID variable is required'
-    exit 1
-fi
-
 # Check $GCLOUD_PROJECT
 if [ -z "$GCLOUD_PROJECT" ]; then
     echoerr '$GCLOUD_PROJECT variable is required'
@@ -368,21 +356,11 @@ fi
 # Create pre-registered image based on the uploaded image
 if ! gcloud --project "$GCLOUD_PROJECT" compute images describe "$REGISTERED_IMAGE" &>/dev/null; then
     gcloud --project "$GCLOUD_PROJECT" compute instances create "$TEMP_INSTANCE" --zone "$GCLOUD_ZONE" --machine-type "n1-standard-1" --network "$OCP_NETWORK" --image "$RHEL_IMAGE_GCE" --boot-disk-size "10" --no-boot-disk-auto-delete --boot-disk-type "pd-ssd" --tags "ssh-external"
-    until gcloud -q --project "$GCLOUD_PROJECT" compute ssh "cloud-user@${TEMP_INSTANCE}" --zone "$GCLOUD_ZONE" --command "echo" &>/dev/null; do
+    until gcloud -q --project "$GCLOUD_PROJECT" compute ssh "centos@${TEMP_INSTANCE}" --zone "$GCLOUD_ZONE" --command "echo" &>/dev/null; do
         echo "Waiting for '${TEMP_INSTANCE}' to come up..."
         sleep 5
     done
-    if ! gcloud -q --project "$GCLOUD_PROJECT" compute ssh "cloud-user@${TEMP_INSTANCE}" --zone "$GCLOUD_ZONE" --ssh-flag="-t" --command "sudo bash -euc '
-        subscription-manager register --username=${RH_USERNAME} --password=\"${RH_PASSWORD}\";
-        subscription-manager attach --pool=${RH_POOL_ID};
-        subscription-manager repos --disable=\"*\";
-        subscription-manager repos \
-            --enable=\"rhel-7-server-rpms\" \
-            --enable=\"rhel-7-server-extras-rpms\" \
-            --enable=\"rhel-7-server-ose-${OCP_VERSION}-rpms\";
-
-        yum -q list atomic-openshift-utils;
-
+    if ! gcloud -q --project "$GCLOUD_PROJECT" compute ssh "centos@${TEMP_INSTANCE}" --zone "$GCLOUD_ZONE" --ssh-flag="-t" --command "sudo bash -euc '
         cat << EOF > /etc/yum.repos.d/google-cloud.repo
 [google-cloud-compute]
 name=Google Cloud Compute
@@ -397,7 +375,6 @@ EOF
         yum install -y google-compute-engine google-compute-engine-init google-config wget git net-tools bind-utils iptables-services bridge-utils bash-completion python-httplib2 docker;
         yum update -y;
         yum clean all;
-        subscription-manager unregister;
 '"; then
         gcloud -q --project "$GCLOUD_PROJECT" compute instances delete "$TEMP_INSTANCE" --zone "$GCLOUD_ZONE"
         gcloud -q --project "$GCLOUD_PROJECT" compute disks delete "$TEMP_INSTANCE" --zone "$GCLOUD_ZONE"
@@ -496,7 +473,7 @@ fi
 # Master backend service
 if ! gcloud --project "$GCLOUD_PROJECT" beta compute backend-services describe "$MASTER_SSL_LB_BACKEND" &>/dev/null; then
     gcloud --project "$GCLOUD_PROJECT" beta compute backend-services create "$MASTER_SSL_LB_BACKEND" --health-checks "$MASTER_SSL_LB_HEALTH_CHECK" --port-name "$MASTER_NAMED_PORT_NAME" --protocol "SSL" --global
-    gcloud --project "$GCLOUD_PROJECT" beta compute backend-services add-backend "$MASTER_SSL_LB_BACKEND" --instance-group "$MASTER_INSTANCE_GROUP" --global --instance-group-zone "$GCLOUD_ZONE"
+    #gcloud --project "$GCLOUD_PROJECT" beta compute backend-services add-backend "$MASTER_SSL_LB_BACKEND" --instance-group "$MASTER_INSTANCE_GROUP" --global --instance-group-zone "$GCLOUD_ZONE"
 else
     echo "Backend service '${MASTER_SSL_LB_BACKEND}' already exists"
 fi
@@ -681,14 +658,6 @@ gcloud --project "$GCLOUD_PROJECT" compute copy-files "${DIR}/ansible-config.yml
 
 # Prepare bastion instance for openshift installation
 gcloud --project "$GCLOUD_PROJECT" compute ssh "cloud-user@${BASTION_INSTANCE}" --zone "$GCLOUD_ZONE" --ssh-flag="-t" --command "sudo bash -euc '
-    subscription-manager register --username=${RH_USERNAME} --password=\"${RH_PASSWORD}\";
-    subscription-manager attach --pool=${RH_POOL_ID};
-    subscription-manager repos --disable=\"*\";
-    subscription-manager repos \
-        --enable=\"rhel-7-server-rpms\" \
-        --enable=\"rhel-7-server-extras-rpms\" \
-        --enable=\"rhel-7-server-ose-${OCP_VERSION}-rpms\";
-    yum install -y python-libcloud atomic-openshift-utils;
 
     if ! grep -q \"export GCE_PROJECT=${GCLOUD_PROJECT}\" /etc/profile.d/ocp.sh 2>/dev/null; then
         echo \"export GCE_PROJECT=${GCLOUD_PROJECT}\" >> /etc/profile.d/ocp.sh;
@@ -712,10 +681,10 @@ gcloud --project "$GCLOUD_PROJECT" compute ssh "cloud-user@${BASTION_INSTANCE}" 
     ~/google-cloud-sdk/bin/gcloud compute ssh cloud-user@${BASTION_INSTANCE} --zone ${GCLOUD_ZONE} --command echo;
 
     if [ ! -d ~/openshift-ansible-contrib ]; then
-        git clone https://github.com/openshift/openshift-ansible-contrib.git ~/openshift-ansible-contrib;
+        git clone https://github.com/w9n/openshift-ansible-contrib.git ~/openshift-ansible-contrib;
     fi
     pushd ~/openshift-ansible-contrib/reference-architecture/gce-ansible;
-    ansible-playbook -e rhsm_user=${RH_USERNAME} -e rhsm_password="${RH_PASSWORD}" -e rhsm_pool=${RH_POOL_ID} -e @~/ansible-config.yml playbooks/openshift-install.yaml;
+    ansible-playbook -e @~/ansible-config.yml playbooks/openshift-install.yaml;
 '";
 
 echo

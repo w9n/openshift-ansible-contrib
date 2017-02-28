@@ -7,7 +7,7 @@
 
 - include: ../../../playbooks/prerequisite.yaml
 
-- include: ../../../playbooks/unexclude-atomic-docker.yaml
+  #- include: ../../../playbooks/unexclude-atomic-docker.yaml
 
 - include: ../../../playbooks/openshift-storage.yaml
 
@@ -18,7 +18,7 @@
 
 - include: openshift-setup.yaml
 
-- include: ../../../playbooks/exclude-atomic-docker.yaml
+  #- include: ../../../playbooks/exclude-atomic-docker.yaml
 
 - hosts: masters
   gather_facts: no

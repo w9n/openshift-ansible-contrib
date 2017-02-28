@@ -14,8 +14,6 @@
       state: latest
     with_items:
     - NetworkManager
-    - atomic-openshift-excluder
-    - atomic-openshift-docker-excluder
 
   - name: Start NetworkManager and network
     service:
